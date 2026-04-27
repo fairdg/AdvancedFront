@@ -1,0 +1,116 @@
+.list {
+  display: grid;
+  gap: 12px;
+}
+
+.card {
+  border: 1px solid #d9e0f2;
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.cardInteractive {
+  cursor: pointer;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.specialityTitle {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #1f2a44;
+}
+
+.countText {
+  margin: 0;
+  color: #667085;
+  font-size: 14px;
+}
+
+.expandButton,
+.actionLink {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #2f7bc8;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
+.commentNode {
+  display: grid;
+  gap: 8px;
+  padding-left: calc(min(var(--reply-level), 3) * 18px);
+  border-left: calc(min(var(--reply-level), 3) * 2px) solid transparent;
+}
+
+.commentMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: #667085;
+  font-size: 13px;
+}
+
+.editedMark {
+  color: #2f7bc8;
+  text-decoration: underline dotted;
+}
+
+.commentText {
+  margin: 0;
+  color: #1f2a44;
+  white-space: pre-wrap;
+}
+
+.commentActions,
+.inlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+
+.inlineForm {
+  display: grid;
+  gap: 10px;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 92px;
+  border: 1px solid #d9e0f2;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px 12px;
+  font: inherit;
+  color: inherit;
+  resize: vertical;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.replyList {
+  display: grid;
+  gap: 12px;
+}
+
+.empty {
+  margin: 0;
+  color: #667085;
+}

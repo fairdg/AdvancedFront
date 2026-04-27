@@ -1,0 +1,233 @@
+.container {
+  min-height: 100vh;
+  padding: 72px 16px 24px;
+}
+
+.inner {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: grid;
+  gap: 18px;
+}
+
+.headerRow {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  color: #667085;
+}
+
+.panel {
+  background: #f5f8ff;
+  border: 1px solid #dfe7f7;
+  border-radius: 16px;
+  padding: 18px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.rootsBlock {
+  display: grid;
+  gap: 10px;
+}
+
+.rootsLabel {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  color: #1f2a44;
+}
+
+.rootsCompact {
+  display: grid;
+  gap: 10px;
+}
+
+.dropdown {
+  position: relative;
+}
+
+.dropdownButton {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.dropdownPanel {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #d9e0f2;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.rootOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #1f2a44;
+  font-size: 14px;
+}
+
+.rootOption input {
+  margin-top: 2px;
+}
+
+.rootCode {
+  font-weight: 800;
+}
+
+.compactMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.selectionBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #e9f0ff;
+  color: #23406d;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.resultHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.resultTitle {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 850;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #e9f0ff;
+  color: #23406d;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid #dfe7f7;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #edf1f8;
+  vertical-align: top;
+}
+
+.table thead th {
+  background: #eef4ff;
+  color: #24436f;
+  font-size: 13px;
+  font-weight: 900;
+  text-align: left;
+}
+
+.table tbody tr:hover {
+  background: #fafcff;
+}
+
+.patientCell {
+  min-width: 240px;
+}
+
+.patientName {
+  margin: 0;
+  font-weight: 800;
+  color: #1f2a44;
+}
+
+.patientMeta {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 13px;
+}
+
+.countCell {
+  text-align: center;
+  font-weight: 800;
+  color: #1f2a44;
+}
+
+.summaryRow td {
+  background: #f7faff;
+  font-weight: 900;
+}
+
+.emptyState {
+  border: 1px dashed #cfd8ea;
+  border-radius: 14px;
+  padding: 24px;
+  text-align: center;
+  color: #667085;
+  background: #fcfdff;
+}
+
+@media (max-width: 860px) {
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .resultHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

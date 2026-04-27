@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import ui from "../controls.module.css";
 import { getIcd10Roots, getSpecialities } from "../api/dictionary";
 import {
@@ -12,13 +12,13 @@ import {
   type CreateInspectionRequest,
   type InspectionConclusion,
 } from "../api/patient";
+import {
+  conclusionOptions,
+  createEmptyDiagnosis,
+  toIso,
+  validateInspectionForm,
+} from "./inspectionForm";
 import s from "./CreateInspectionPage.module.css";
-
-function toIso(value: string) {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
 
 function nowLocalDatetime() {
   const d = new Date();
@@ -31,15 +31,16 @@ function nowLocalDatetime() {
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
-const conclusionOptions: Array<{ value: InspectionConclusion; label: string }> = [
-  { value: "Recovery", label: "Выздоровление" },
-  { value: "Disease", label: "Болезнь" },
-  { value: "Death", label: "Смерть" },
-];
+function hasChildInspection(inspectionId: string, inspections: Array<{ id: string; previousId?: string | null; hasChain?: boolean }>) {
+  const inspection = inspections.find((item) => item.id === inspectionId);
+  if (inspection?.hasChain) return true;
+  return inspections.some((item) => item.previousId === inspectionId);
+}
 
 export function CreateInspectionPage() {
   const { id } = useParams();
   const patientId = id ?? "";
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -50,11 +51,12 @@ export function CreateInspectionPage() {
   const [conclusion, setConclusion] = useState<InspectionConclusion>("Disease");
   const [nextVisitDate, setNextVisitDate] = useState("");
   const [deathDate, setDeathDate] = useState("");
-  const [previousInspectionId, setPreviousInspectionId] = useState<string>("");
+  const [previousInspectionId, setPreviousInspectionId] = useState<string>(() => searchParams.get("previousInspectionId") ?? "");
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [currentTimestamp] = useState(() => Date.now());
 
   const [diagnoses, setDiagnoses] = useState<CreateInspectionDiagnosis[]>([
-    { icdDiagnosisId: "", description: "", type: "Main" },
+    createEmptyDiagnosis(),
   ]);
   const [consultations, setConsultations] = useState<CreateInspectionConsultation[]>([]);
 
@@ -72,10 +74,7 @@ export function CreateInspectionPage() {
     retry: 0,
   });
 
-  const isDead = useMemo(() => {
-    const list = inspectionsQuery.data?.inspections ?? [];
-    return list.some((x) => x.conclusion === "Death");
-  }, [inspectionsQuery.data?.inspections]);
+  const isDead = (inspectionsQuery.data?.inspections ?? []).some((x) => x.conclusion === "Death");
 
   const specialitiesQuery = useQuery({
     queryKey: ["specialities"],
@@ -88,9 +87,19 @@ export function CreateInspectionPage() {
     queryFn: () => getIcd10Roots(),
     retry: 0,
   });
+  const allInspections = inspectionsQuery.data?.inspections;
 
   const validationErrors = useMemo(() => {
-    const errors: string[] = [];
+    const inspections = allInspections ?? [];
+    const errors = validateInspectionForm({
+      anamnesis,
+      complaints,
+      treatment,
+      conclusion,
+      nextVisitDate,
+      deathDate,
+      diagnoses,
+    });
     if (!patientId) errors.push("Нет id пациента.");
     if (isDead) errors.push("Осмотр с заключением “Смерть” уже есть — дальнейшие осмотры невозможны.");
 
@@ -99,12 +108,12 @@ export function CreateInspectionPage() {
       errors.push("Укажи корректную дату осмотра.");
     } else {
       const inspectionTs = new Date(isoDate).getTime();
-      if (!Number.isNaN(inspectionTs) && inspectionTs > Date.now()  ) {
+      if (!Number.isNaN(inspectionTs) && inspectionTs > currentTimestamp) {
         errors.push("Нельзя создавать осмотр в будущем.");
       }
 
       if (previousInspectionId.trim()) {
-        const prev = (inspectionsQuery.data?.inspections ?? []).find((x) => x.id === previousInspectionId.trim());
+        const prev = inspections.find((x) => x.id === previousInspectionId.trim());
         if (!prev?.date) {
           errors.push("Не удалось проверить дату предыдущего осмотра.");
         } else {
@@ -113,37 +122,19 @@ export function CreateInspectionPage() {
             errors.push("Дата осмотра не может быть раньше предыдущего осмотра в цепочке.");
           }
         }
+        if (hasChildInspection(previousInspectionId.trim(), inspections)) {
+          errors.push("У выбранного осмотра уже есть продолжение в цепочке.");
+        }
       }
     }
-
-    if (!anamnesis.trim()) errors.push("Заполни анамнез.");
-    if (!complaints.trim()) errors.push("Заполни жалобы.");
-    if (!treatment.trim()) errors.push("Заполни лечение.");
-
-    if (conclusion === "Disease" && !toIso(nextVisitDate)) {
-      errors.push("Для заключения “Болезнь” нужно указать дату следующего визита.");
-    }
-    if (conclusion === "Death" && !toIso(deathDate)) {
-      errors.push("Для заключения “Смерть” нужно указать дату смерти.");
-    }
-
-    const trimmed = diagnoses.map((d) => ({
-      icdDiagnosisId: d.icdDiagnosisId.trim(),
-      description: d.description.trim(),
-      type: d.type,
-    }));
-
-    if (trimmed.length === 0) errors.push("Добавь хотя бы один диагноз.");
-    if (trimmed.some((d) => !d.icdDiagnosisId)) errors.push("В каждом диагнозе должен быть указан `icdDiagnosisId`.");
-    const mainCount = trimmed.filter((d) => d.type === "Main").length;
-    if (mainCount !== 1) errors.push("Должен быть ровно один основной диагноз (Main).");
-
     const consTrimmed = consultations.map((c) => ({
       specialityId: c.specialityId.trim(),
       content: c.comment.content.trim(),
     }));
     if (consTrimmed.some((c) => !c.specialityId)) errors.push("В каждой консультации должна быть выбрана специальность.");
-    if (consTrimmed.some((c) => !c.content)) errors.push("В каждой консультации должен быть комментарий.");
+    if (consTrimmed.some((c) => !c.content)) {
+      errors.push("При создании консультации врач-автор осмотра должен указать комментарий, описывающий проблему.");
+    }
 
     const specialityIds = consTrimmed.filter((c) => c.specialityId).map((c) => c.specialityId);
     if (new Set(specialityIds).size !== specialityIds.length) {
@@ -159,13 +150,49 @@ export function CreateInspectionPage() {
     deathDate,
     diagnoses,
     consultations,
-    inspectionsQuery.data?.inspections,
+    allInspections,
     isDead,
     nextVisitDate,
     patientId,
     previousInspectionId,
+    currentTimestamp,
     treatment,
   ]);
+
+  const updateDiagnosisAt = (
+    index: number,
+    updater: (diagnosis: CreateInspectionDiagnosis) => CreateInspectionDiagnosis
+  ) => {
+    setDiagnoses((prev) => prev.map((diagnosis, diagnosisIndex) => (diagnosisIndex === index ? updater(diagnosis) : diagnosis)));
+  };
+
+  const addDiagnosis = () => {
+    setDiagnoses((prev) => [...prev, createEmptyDiagnosis("Concomitant")]);
+  };
+
+  const removeDiagnosisAt = (index: number) => {
+    setDiagnoses((prev) => {
+      const nextDiagnoses = prev.filter((_, diagnosisIndex) => diagnosisIndex !== index);
+      return nextDiagnoses.length ? nextDiagnoses : prev;
+    });
+  };
+
+  const updateConsultationAt = (
+    index: number,
+    updater: (consultation: CreateInspectionConsultation) => CreateInspectionConsultation
+  ) => {
+    setConsultations((prev) =>
+      prev.map((consultation, consultationIndex) => (consultationIndex === index ? updater(consultation) : consultation))
+    );
+  };
+
+  const addConsultation = () => {
+    setConsultations((prev) => [...prev, { specialityId: "", comment: { content: "" } }]);
+  };
+
+  const removeConsultationAt = (index: number) => {
+    setConsultations((prev) => prev.filter((_, consultationIndex) => consultationIndex !== index));
+  };
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -262,9 +289,10 @@ export function CreateInspectionPage() {
                 disabled={inspectionsQuery.isLoading}
               >
                 <option value="">Нет</option>
-                {(inspectionsQuery.data?.inspections ?? []).map((it) => (
-                  <option key={it.id} value={it.id}>
+                {(allInspections ?? []).map((it) => (
+                  <option key={it.id} value={it.id} disabled={hasChildInspection(it.id, allInspections ?? [])}>
                     {new Date(it.date).toLocaleString("ru-RU")} • {it.doctor} • {it.diagnosis?.code ? it.diagnosis.code : "МКБ?"}
+                    {hasChildInspection(it.id, allInspections ?? []) ? " • уже есть продолжение" : ""}
                   </option>
                 ))}
               </select>
@@ -322,9 +350,7 @@ export function CreateInspectionPage() {
                   <select
                     className={ui.select}
                     value={d.icdDiagnosisId}
-                    onChange={(e) =>
-                      setDiagnoses((prev) => prev.map((x, i) => (i === idx ? { ...x, icdDiagnosisId: e.target.value } : x)))
-                    }
+                    onChange={(e) => updateDiagnosisAt(idx, (diagnosis) => ({ ...diagnosis, icdDiagnosisId: e.target.value }))}
                     disabled={icdRootsQuery.isLoading}
                   >
                     <option value="">{icdRootsQuery.isLoading ? "Загрузка..." : "Выбрать"}</option>
@@ -341,9 +367,7 @@ export function CreateInspectionPage() {
                   <select
                     className={ui.select}
                     value={d.type}
-                    onChange={(e) =>
-                      setDiagnoses((prev) => prev.map((x, i) => (i === idx ? { ...x, type: e.target.value as CreateInspectionDiagnosis["type"] } : x)))
-                    }
+                    onChange={(e) => updateDiagnosisAt(idx, (diagnosis) => ({ ...diagnosis, type: e.target.value as CreateInspectionDiagnosis["type"] }))}
                   >
                     <option value="Main">Основной</option>
                     <option value="Concomitant">Сопутствующий</option>
@@ -357,9 +381,7 @@ export function CreateInspectionPage() {
                 <input
                   className={ui.input}
                   value={d.description}
-                  onChange={(e) =>
-                    setDiagnoses((prev) => prev.map((x, i) => (i === idx ? { ...x, description: e.target.value } : x)))
-                  }
+                  onChange={(e) => updateDiagnosisAt(idx, (diagnosis) => ({ ...diagnosis, description: e.target.value }))}
                   placeholder="..."
                 />
               </label>
@@ -368,9 +390,7 @@ export function CreateInspectionPage() {
                 <button
                   className={`${ui.button} ${ui.buttonSecondary}`}
                   type="button"
-                  onClick={() =>
-                    setDiagnoses((prev) => prev.filter((_, i) => i !== idx).length ? prev.filter((_, i) => i !== idx) : prev)
-                  }
+                  onClick={() => removeDiagnosisAt(idx)}
                   disabled={diagnoses.length <= 1}
                 >
                   Удалить
@@ -383,13 +403,13 @@ export function CreateInspectionPage() {
           <button
             className={`${ui.button} ${ui.buttonSecondary}`}
             type="button"
-            onClick={() => setDiagnoses((prev) => [...prev, { icdDiagnosisId: "", description: "", type: "Concomitant" }])}
+            onClick={addDiagnosis}
           >
             + Добавить диагноз
           </button>
 
           <h3 className={s.sectionTitle}>Консультации</h3>
-          <p className={s.muted}>Опционально: добавь консультации других специалистов.</p>
+          <p className={s.muted}>Опционально: добавь консультации других специалистов. Повторять одну и ту же специальность нельзя.</p>
 
           {consultations.map((c, idx) => (
             <div className={s.itemCard} key={idx}>
@@ -399,16 +419,16 @@ export function CreateInspectionPage() {
                   <select
                     className={ui.select}
                     value={c.specialityId}
-                    onChange={(e) =>
-                      setConsultations((prev) =>
-                        prev.map((x, i) => (i === idx ? { ...x, specialityId: e.target.value } : x))
-                      )
-                    }
+                    onChange={(e) => updateConsultationAt(idx, (consultation) => ({ ...consultation, specialityId: e.target.value }))}
                     disabled={specialitiesQuery.isLoading}
                   >
                     <option value="">Выбрать</option>
                     {(specialitiesQuery.data ?? []).map((sp) => (
-                      <option key={sp.id} value={sp.id}>
+                      <option
+                        key={sp.id}
+                        value={sp.id}
+                        disabled={consultations.some((item, itemIdx) => itemIdx !== idx && item.specialityId === sp.id)}
+                      >
                         {sp.name?.trim() ? sp.name : sp.id}
                       </option>
                     ))}
@@ -416,16 +436,17 @@ export function CreateInspectionPage() {
                 </label>
 
                 <label className={ui.label}>
-                  <span>Комментарий</span>
+                  <span>Комментарий врача-автора осмотра</span>
                   <input
                     className={ui.input}
                     value={c.comment.content}
                     onChange={(e) =>
-                      setConsultations((prev) =>
-                        prev.map((x, i) => (i === idx ? { ...x, comment: { content: e.target.value } } : x))
-                      )
+                      updateConsultationAt(idx, (consultation) => ({
+                        ...consultation,
+                        comment: { content: e.target.value },
+                      }))
                     }
-                    placeholder="..."
+                    placeholder="Опиши проблему для специалиста"
                   />
                 </label>
               </div>
@@ -433,7 +454,7 @@ export function CreateInspectionPage() {
               <button
                 className={`${ui.button} ${ui.buttonSecondary}`}
                 type="button"
-                onClick={() => setConsultations((prev) => prev.filter((_, i) => i !== idx))}
+                onClick={() => removeConsultationAt(idx)}
               >
                 Удалить консультацию
               </button>
@@ -443,13 +464,12 @@ export function CreateInspectionPage() {
           <button
             className={`${ui.button} ${ui.buttonSecondary}`}
             type="button"
-            onClick={() => setConsultations((prev) => [...prev, { specialityId: "", comment: { content: "" } }])}
+            onClick={addConsultation}
           >
             + Добавить консультацию
           </button>
 
           <div className={s.footerRow}>
-            {/* <Link to={`/patient/${patientId}`}>Вернуться без сохранения</Link> */}
             <button
               className={`${ui.button} ${ui.buttonSecondary}`}
               type="button"

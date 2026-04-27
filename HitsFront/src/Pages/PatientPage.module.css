@@ -198,12 +198,24 @@
   padding: 14px;
   position: relative;
   --level: 0;
-  margin-left: calc(min(var(--level), 3) * 14px);
+  margin-left: calc(min(var(--level), 3) * 42px);
 }
 
 .inspectionDeath {
   border-color: #f2b4b4;
   background: #fdeeee;
+}
+
+.inspectionNested::before {
+  content: "";
+  position: absolute;
+  left: -22px;
+  top: -1px;
+  width: 18px;
+  height: 48px;
+  border-left: 3px solid #d7dff5;
+  border-bottom: 3px solid #d7dff5;
+  border-bottom-left-radius: 2px;
 }
 
 .inspectionHeader {
@@ -219,6 +231,28 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.chainToggle {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: #2f7bc8;
+  color: #ffffff;
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  cursor: pointer;
+  padding: 0;
+}
+
+.chainToggle:hover {
+  background: #2468b2;
 }
 
 .datePill {
@@ -260,21 +294,17 @@
   text-decoration: none;
 }
 
-.inspectionAction:disabled {
+.inspectionAction:disabled,
+.inspectionActionDisabled {
   opacity: 0.55;
   cursor: default;
+  pointer-events: none;
 }
 
 .inspectionMeta {
   margin: 0;
   color: #8a93a6;
   font-size: 14px;
-}
-
-.chainButtonRow {
-  margin-top: 10px;
-  display: flex;
-  justify-content: flex-start;
 }
 
 .pager {

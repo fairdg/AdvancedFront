@@ -1,63 +1,33 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import ui from "../controls.module.css";
 import { getIcd10Roots } from "../api/dictionary";
-import { getPatient, getPatientInspections, type Inspection, type InspectionConclusion } from "../api/patient";
+import { getPatient, getPatientInspections } from "../api/patient";
+import { useServerPagination } from "../hooks/useServerPagination";
+import { formatDate } from "../shared/date";
+import {
+  buildNextByPrevious,
+  buildRenderedChainItems,
+  hasChainContinuation,
+  rootFromIcd,
+  toggleExpandedChainItem,
+} from "../shared/inspectionChain";
+import { formatConclusion } from "../shared/medicalFormat";
+import { buildSearch, parseIntOr } from "../shared/urlSearch";
 import s from "./PatientPage.module.css";
 
-function parseIntOr(value: string | null, fallback: number) {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+function getGenderPresentation(gender: "Male" | "Female" | undefined) {
+  if (gender === "Female") return { mark: "♀", badgeClass: s.genderFemale };
+  if (gender === "Male") return { mark: "♂", badgeClass: s.genderMale };
+  return { mark: "•", badgeClass: "" };
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function buildSearch(current: URLSearchParams, next: Record<string, string | null | undefined>) {
-  const sp = new URLSearchParams(current);
-  for (const [k, v] of Object.entries(next)) {
-    if (v == null || v === "") sp.delete(k);
-    else sp.set(k, v);
-  }
-  return sp;
-}
-
-function formatDate(value: string | undefined) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("ru-RU");
-}
-
-function formatConclusion(value: InspectionConclusion) {
-  if (value === "Recovery") return "Выздоровление";
-  if (value === "Disease") return "Болезнь";
-  if (value === "Death") return "Смерть";
-  return value;
-}
-
-function rootFromIcd(code: string | undefined) {
-  if (!code) return null;
-  const c = code.trim().toUpperCase();
-  if (!c) return null;
-  const m = c.match(/^[A-Z]/);
-  return m ? m[0] : null;
-}
-
-function buildNextByPrevious(inspections: Inspection[]) {
-  const map = new Map<string, Inspection[]>();
-  for (const it of inspections) {
-    if (!it.previousId) continue;
-    const arr = map.get(it.previousId) ?? [];
-    arr.push(it);
-    map.set(it.previousId, arr);
-  }
-  for (const arr of map.values()) {
-    arr.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  }
-  return map;
+function buildPatientPageLink(patientId: string, searchParams: URLSearchParams, nextPage: number) {
+  return {
+    pathname: `/patient/${patientId}`,
+    search: buildSearch(searchParams, { page: String(nextPage) }).toString(),
+  };
 }
 
 export function PatientPage() {
@@ -77,16 +47,8 @@ export function PatientPage() {
     retry: 0,
   });
 
-  const selectedRoot = useMemo(() => {
-    if (!icdRootId) return null;
-    return (rootsQuery.data ?? []).find((r) => r.id === icdRootId) ?? null;
-  }, [icdRootId, rootsQuery.data]);
-
-  const selectedRootLetter = useMemo(() => {
-    const code = selectedRoot?.code;
-    if (!code) return null;
-    return rootFromIcd(code);
-  }, [selectedRoot?.code]);
+  const selectedRoot = icdRootId ? (rootsQuery.data ?? []).find((r) => r.id === icdRootId) ?? null : null;
+  const selectedRootLetter = selectedRoot?.code ? rootFromIcd(selectedRoot.code) : null;
 
   const patientQuery = useQuery({
     queryKey: ["patient", patientId],
@@ -102,89 +64,37 @@ export function PatientPage() {
         page,
         pageSize,
         icdRoots: selectedRoot?.id ? [selectedRoot.id] : undefined,
-        grouped,
       }),
     enabled: Boolean(patientId),
     retry: 0,
   });
 
   const pagination = inspectionsQuery.data?.pagination;
-  const totalPages = useMemo(() => {
-    if (!pagination) return 1;
-    const n = Number(pagination.count);
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
-  }, [pagination]);
+  const { totalPages, safePage, pageLinks } = useServerPagination({
+    pagination,
+    page,
+    searchParams,
+    setSearchParams,
+  });
 
-  const serverPage = useMemo(() => {
-    if (!pagination) return null;
-    const current = pagination.current;
-    if (current >= 1 && current <= totalPages) return current;
-    if (current >= 0 && current < totalPages) return current + 1;
-    return null;
-  }, [pagination, totalPages]);
-
-  const safePage = clamp(serverPage ?? page, 1, totalPages);
-  const pageLinks = useMemo(() => {
-    const start = Math.max(1, safePage - 2);
-    const end = Math.min(totalPages, safePage + 2);
-    const pages: number[] = [];
-    for (let p = start; p <= end; p += 1) pages.push(p);
-    return pages;
-  }, [safePage, totalPages]);
-
-  useEffect(() => {
-    if (!pagination) return;
-    if (serverPage == null) return;
-    if (serverPage === page) return;
-    setSearchParams(buildSearch(searchParams, { page: String(serverPage) }), { replace: true });
-  }, [page, pagination, searchParams, serverPage, setSearchParams]);
-
-  const rawInspections = useMemo(() => inspectionsQuery.data?.inspections ?? [], [inspectionsQuery.data?.inspections]);
   const filteredInspections = useMemo(() => {
-    if (!selectedRootLetter) return rawInspections;
-    return rawInspections.filter((it) => rootFromIcd(it.diagnosis?.code) === selectedRootLetter);
-  }, [rawInspections, selectedRootLetter]);
+    const inspections = inspectionsQuery.data?.inspections ?? [];
+    if (!selectedRootLetter) return inspections;
+    return inspections.filter((it) => rootFromIcd(it.diagnosis?.code) === selectedRootLetter);
+  }, [inspectionsQuery.data?.inspections, selectedRootLetter]);
 
   const nextByPrev = useMemo(() => buildNextByPrevious(filteredInspections), [filteredInspections]);
-  const inspectionsToRender = useMemo(() => {
-    if (!grouped) {
-      return filteredInspections.map((it) => ({ it, level: 0, canExpand: false }));
-    }
+  const inspectionsToRender = useMemo(
+    () => buildRenderedChainItems(filteredInspections, grouped, expanded),
+    [expanded, filteredInspections, grouped]
+  );
 
-    const byId = new Map(filteredInspections.map((x) => [x.id, x]));
-    const roots = filteredInspections.filter((x) => !x.previousId || !byId.has(x.previousId));
-    roots.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-
-    const out: Array<{ it: Inspection; level: number; canExpand: boolean }> = [];
-
-    const pushChain = (root: Inspection) => {
-      out.push({ it: root, level: 0, canExpand: Boolean(nextByPrev.get(root.id)?.length) || root.hasChain });
-      let current = root;
-      let level = 1;
-      while (expanded.has(current.id)) {
-        const next = nextByPrev.get(current.id)?.[0];
-        if (!next) break;
-        out.push({ it: next, level, canExpand: Boolean(nextByPrev.get(next.id)?.length) || next.hasChain });
-        current = next;
-        level += 1;
-        if (level > 50) break;
-      }
-    };
-
-    for (const r of roots) pushChain(r);
-    return out;
-  }, [expanded, filteredInspections, grouped, nextByPrev]);
-
-  const isDead = useMemo(() => {
-    return rawInspections.some((x) => x.conclusion === "Death");
-  }, [rawInspections]);
+  const isDead = (inspectionsQuery.data?.inspections ?? []).some((x) => x.conclusion === "Death");
 
   if (!patientId) return <div className={s.container}>Нет id пациента</div>;
 
   const patient = patientQuery.data;
-  const genderMark = patient?.gender === "Female" ? "♀" : patient?.gender === "Male" ? "♂" : "•";
-  const genderBadgeClass =
-    patient?.gender === "Female" ? s.genderFemale : patient?.gender === "Male" ? s.genderMale : "";
+  const { mark: genderMark, badgeClass: genderBadgeClass } = getGenderPresentation(patient?.gender);
 
   return (
     <div className={s.container}>
@@ -293,55 +203,55 @@ export function PatientPage() {
         {inspectionsQuery.isError ? <p className={ui.error}>{(inspectionsQuery.error as Error).message}</p> : null}
 
         <div className={`${s.list}${grouped ? ` ${s.listSingle}` : ""}`}>
-          {inspectionsToRender.map(({ it, level, canExpand }) => {
-            const isDeath = it.conclusion === "Death";
+          {inspectionsToRender.map(({ item: inspection, level, canExpand }) => {
+            const isDeath = inspection.conclusion === "Death";
+            const isExpanded = expanded.has(inspection.id);
+            const hasChild = hasChainContinuation(nextByPrev, inspection);
             return (
               <div
-                key={it.id}
-                className={`${s.inspectionCard}${isDeath ? ` ${s.inspectionDeath}` : ""}`}
+                key={inspection.id}
+                className={`${s.inspectionCard}${isDeath ? ` ${s.inspectionDeath}` : ""}${level > 0 ? ` ${s.inspectionNested}` : ""}`}
                 style={{ ["--level" as never]: level }}
               >
                 <div className={s.inspectionHeader}>
                   <div className={s.inspectionTitleWrap}>
-                    <span className={s.datePill}>{formatDate(it.date)}</span>
+                    {grouped && canExpand ? (
+                      <button
+                        className={s.chainToggle}
+                        type="button"
+                        aria-label={isExpanded ? "Скрыть следующий осмотр" : "Показать следующий осмотр"}
+                        onClick={() => setExpanded((prev) => toggleExpandedChainItem(prev, inspection.id))}
+                      >
+                        {isExpanded ? "−" : "+"}
+                      </button>
+                    ) : null}
+                    <span className={s.datePill}>{formatDate(inspection.date)}</span>
                     <p className={s.inspectionTitle}>Амбулаторный осмотр</p>
                   </div>
                   <div className={s.inspectionActions}>
-                    <button className={s.inspectionAction} type="button" disabled>
+                    <Link className={s.inspectionAction} to={`/inspection/${inspection.id}`}>
                       Детали осмотра
-                    </button>
-                    <button className={s.inspectionAction} type="button" disabled={isDead}>
+                    </Link>
+                    <Link
+                      className={`${s.inspectionAction}${isDead || hasChild ? ` ${s.inspectionActionDisabled}` : ""}`}
+                      to={`/patient/${patientId}/inspections/create?previousInspectionId=${inspection.id}`}
+                      aria-disabled={isDead || hasChild}
+                      onClick={(e) => {
+                        if (isDead || hasChild) e.preventDefault();
+                      }}
+                    >
                       Добавить осмотр
-                    </button>
+                    </Link>
                   </div>
                 </div>
 
                 <p className={s.inspectionMeta}>
-                  Заключение: <b>{formatConclusion(it.conclusion)}</b>
+                  Заключение: <b>{formatConclusion(inspection.conclusion)}</b>
                 </p>
                 <p className={s.inspectionMeta}>
-                  Основной диагноз: <b>{it.diagnosis?.name}</b> ({it.diagnosis?.code})
+                  Основной диагноз: <b>{inspection.diagnosis?.name}</b> ({inspection.diagnosis?.code})
                 </p>
-                <p className={s.inspectionMeta}>Медицинский работник: {it.doctor}</p>
-
-                {grouped && canExpand ? (
-                  <div className={s.chainButtonRow}>
-                    <button
-                      className={`${ui.button} ${ui.buttonSecondary}`}
-                      type="button"
-                      onClick={() => {
-                        setExpanded((prev) => {
-                          const next = new Set(prev);
-                          next.add(it.id);
-                          return next;
-                        });
-                      }}
-                      disabled={expanded.has(it.id)}
-                    >
-                      {expanded.has(it.id) ? "Показано" : "Показать следующий"}
-                    </button>
-                  </div>
-                ) : null}
+                <p className={s.inspectionMeta}>Медицинский работник: {inspection.doctor}</p>
               </div>
             );
           })}
@@ -351,7 +261,7 @@ export function PatientPage() {
           <div className={s.pagerLinks}>
             <Link
               className={`${s.pageLink}${safePage <= 1 ? ` ${s.pageLinkDisabled}` : ""}`}
-              to={{ pathname: `/patient/${patientId}`, search: buildSearch(searchParams, { page: String(Math.max(1, safePage - 1)) }).toString() }}
+              to={buildPatientPageLink(patientId, searchParams, Math.max(1, safePage - 1))}
               aria-disabled={safePage <= 1}
             >
               Назад
@@ -359,9 +269,12 @@ export function PatientPage() {
 
             {pageLinks.map((p) => {
               const isActive = p === safePage;
-              const to = { pathname: `/patient/${patientId}`, search: buildSearch(searchParams, { page: String(p) }).toString() };
               return (
-                <Link key={p} className={`${s.pageLink} ${isActive ? s.pageLinkActive : ""}`} to={to}>
+                <Link
+                  key={p}
+                  className={`${s.pageLink} ${isActive ? s.pageLinkActive : ""}`}
+                  to={buildPatientPageLink(patientId, searchParams, p)}
+                >
                   {p}
                 </Link>
               );
@@ -369,10 +282,7 @@ export function PatientPage() {
 
             <Link
               className={`${s.pageLink}${safePage >= totalPages ? ` ${s.pageLinkDisabled}` : ""}`}
-              to={{
-                pathname: `/patient/${patientId}`,
-                search: buildSearch(searchParams, { page: String(Math.min(totalPages, safePage + 1)) }).toString(),
-              }}
+              to={buildPatientPageLink(patientId, searchParams, Math.min(totalPages, safePage + 1))}
               aria-disabled={safePage >= totalPages}
             >
               Вперёд

@@ -1,41 +1,35 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import ui from "../controls.module.css";
 import { createPatient, getPatients, type InspectionConclusion } from "../api/patient";
+import { useServerPagination } from "../hooks/useServerPagination";
+import { formatDate, toIsoFromDate } from "../shared/date";
+import { formatGender } from "../shared/medicalFormat";
+import { buildSearch, firstParam, parseIntOr } from "../shared/urlSearch";
 import s from "./PatientsPage.module.css";
 
-function parseIntOr(value: string | null, fallback: number) {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+function parseConclusion(value: string | null): "" | InspectionConclusion {
+  return value === "Recovery" || value === "Disease" || value === "Death" ? value : "";
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
+function buildPatientsPageLink(searchParams: URLSearchParams, page: number) {
+  return { pathname: "/patients", search: buildSearch(searchParams, { page: String(page) }).toString() };
 }
 
-function firstParam(current: URLSearchParams, keys: string[]) {
-  for (const k of keys) {
-    const v = current.get(k);
-    if (v != null) return v;
-  }
-  return null;
-}
-
-function buildSearch(current: URLSearchParams, next: Record<string, string | null | undefined>) {
-  const sp = new URLSearchParams(current);
-  for (const [k, v] of Object.entries(next)) {
-    if (v == null || v === "") sp.delete(k);
-    else sp.set(k, v);
-  }
-  return sp;
+function createEmptyPatientForm() {
+  return {
+    name: "",
+    birthday: "",
+    gender: "Male" as "Male" | "Female",
+  };
 }
 
 function normalizePatientsSearchParams(current: URLSearchParams) {
   const page = parseIntOr(firstParam(current, ["page", "current"]), 1);
   const pageSize = parseIntOr(firstParam(current, ["pageSize", "size"]), 5);
   const name = current.get("name") ?? "";
-  const conclusion = (firstParam(current, ["conclusions", "conclusion"]) ?? "") as "" | InspectionConclusion;
+  const conclusion = parseConclusion(firstParam(current, ["conclusion", "conclusions"]));
   const sort = firstParam(current, ["sorting", "sort"]) ?? "NameAsc";
   const hasPlannedVisits = current.get("hasPlannedVisits") === "true" || current.get("planned") === "1";
   const onlyMine = current.get("onlyMine") === "true" || current.get("mine") === "1";
@@ -46,7 +40,10 @@ function normalizePatientsSearchParams(current: URLSearchParams) {
   }
 
   if (name.trim()) sp.set("name", name);
-  if (conclusion) sp.set("conclusions", conclusion);
+  if (conclusion) {
+    sp.set("conclusion", conclusion);
+    sp.set("conclusions", conclusion);
+  }
   if (hasPlannedVisits) sp.set("hasPlannedVisits", "true");
   if (onlyMine) sp.set("onlyMine", "true");
   if (sort && sort !== "NameAsc") sp.set("sorting", sort);
@@ -72,35 +69,18 @@ const sortOptions: Array<{ value: string; label: string }> = [
   { value: "InspectionAsc", label: "Осмотры (старые)" },
 ];
 
-function formatGender(value: unknown) {
-  if (value === "Male") return "Мужчина";
-  if (value === "Female") return "Женщина";
-  return "—";
-}
-
-function formatDate(value: string | undefined) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("ru-RU");
-}
-
-function toIsoFromDate(value: string) {
-  return new Date(value).toISOString();
-}
-
 export function PatientsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [newName, setNewName] = useState("");
-  const [newBirthday, setNewBirthday] = useState("");
-  const [newGender, setNewGender] = useState<"Male" | "Female">("Male");
+  const [newName, setNewName] = useState(createEmptyPatientForm().name);
+  const [newBirthday, setNewBirthday] = useState(createEmptyPatientForm().birthday);
+  const [newGender, setNewGender] = useState<"Male" | "Female">(createEmptyPatientForm().gender);
   const isAddOpen = searchParams.get("add") === "1";
 
   const page = parseIntOr(firstParam(searchParams, ["page", "current"]), 1);
   const pageSize = parseIntOr(firstParam(searchParams, ["pageSize", "size"]), 5);
   const name = searchParams.get("name") ?? "";
-  const conclusion = (firstParam(searchParams, ["conclusions", "conclusion"]) ?? "") as "" | InspectionConclusion;
+  const conclusion = parseConclusion(firstParam(searchParams, ["conclusion", "conclusions"]));
   const hasPlannedVisits = searchParams.get("hasPlannedVisits") === "true" || searchParams.get("planned") === "1";
   const onlyMine = searchParams.get("onlyMine") === "true" || searchParams.get("mine") === "1";
   const sort = firstParam(searchParams, ["sorting", "sort"]) ?? "NameAsc";
@@ -127,39 +107,21 @@ export function PatientsPage() {
   });
 
   const pagination = query.data?.pagination;
-  const totalPages = useMemo(() => {
-    if (!pagination) return 1;
-    const n = Number(pagination.count);
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
-  }, [pagination]);
+  const { totalPages, safePage, pageLinks } = useServerPagination({
+    pagination,
+    page,
+    searchParams,
+    setSearchParams,
+  });
 
-  const serverPage = useMemo(() => {
-    if (!pagination) return null;
-    const current = pagination.current;
-    if (current >= 1 && current <= totalPages) return current;
-    if (current >= 0 && current < totalPages) return current + 1;
-    return null;
-  }, [pagination, totalPages]);
+  const canCreatePatient = newName.trim().length > 0 && newBirthday.length > 0;
+  const resetNewPatientForm = () => {
+    const emptyPatientForm = createEmptyPatientForm();
+    setNewName(emptyPatientForm.name);
+    setNewBirthday(emptyPatientForm.birthday);
+    setNewGender(emptyPatientForm.gender);
+  };
 
-  const safePage = clamp(serverPage ?? page, 1, totalPages);
-  const pageLinks = useMemo(() => {
-    const current = safePage;
-    const max = totalPages;
-    const start = Math.max(1, current - 2);
-    const end = Math.min(max, current + 2);
-    const pages: number[] = [];
-    for (let p = start; p <= end; p += 1) pages.push(p);
-    return pages;
-  }, [safePage, totalPages]);
-
-  useEffect(() => {
-    if (!pagination) return;
-    if (serverPage == null) return;
-    if (serverPage === page) return;
-    setSearchParams(buildSearch(searchParams, { page: String(serverPage) }), { replace: true });
-  }, [page, pagination, searchParams, serverPage, setSearchParams]);
-
-  const canCreatePatient = useMemo(() => newName.trim().length > 0 && newBirthday.length > 0, [newBirthday.length, newName]);
   const createMutation = useMutation({
     mutationFn: () =>
       createPatient({
@@ -170,9 +132,7 @@ export function PatientsPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["patients"] });
       setSearchParams(buildSearch(searchParams, { add: null }), { replace: true });
-      setNewName("");
-      setNewBirthday("");
-      setNewGender("Male");
+      resetNewPatientForm();
     },
   });
 
@@ -185,28 +145,22 @@ export function PatientsPage() {
     };
   }, [isAddOpen]);
 
-  const closeAddModal = useMemo(() => {
-    return () => {
-      setSearchParams(buildSearch(searchParams, { add: null }), { replace: true });
-      createMutation.reset();
-      setNewName("");
-      setNewBirthday("");
-      setNewGender("Male");
-    };
-  }, [createMutation, searchParams, setSearchParams]);
+  const closeAddModal = () => {
+    setSearchParams(buildSearch(searchParams, { add: null }), { replace: true });
+    createMutation.reset();
+    resetNewPatientForm();
+  };
+
+  const openAddModal = () => {
+    setSearchParams(buildSearch(searchParams, { add: "1" }));
+  };
 
   return (
     <div className={s.container}>
       <div className={s.inner}>
         <div className={s.headerRow}>
           <h1 className={s.title}>Пациенты</h1>
-          <button
-            className={`${ui.button} ${ui.buttonSecondary}`}
-            type="button"
-            onClick={() => {
-              setSearchParams(buildSearch(searchParams, { add: "1" }));
-            }}
-          >
+          <button className={`${ui.button} ${ui.buttonSecondary}`} type="button" onClick={openAddModal}>
             + Новый пациент
           </button>
         </div>
@@ -246,7 +200,7 @@ export function PatientsPage() {
                 className={ui.select}
                 value={conclusion}
                 onChange={(e) =>
-                  setSearchParams(buildSearch(searchParams, { conclusions: e.target.value, conclusion: null, page: "1" }))
+                  setSearchParams(buildSearch(searchParams, { conclusion: e.target.value, conclusions: e.target.value, page: "1" }))
                 }
               >
                 {conclusionOptions.map((o) => (
@@ -329,7 +283,7 @@ export function PatientsPage() {
           <div className={s.pagerLinks}>
             <Link
               className={`${s.pageLink}${safePage <= 1 ? ` ${s.pageLinkDisabled}` : ""}`}
-              to={{ pathname: "/patients", search: buildSearch(searchParams, { page: String(Math.max(1, safePage - 1)) }).toString() }}
+              to={buildPatientsPageLink(searchParams, Math.max(1, safePage - 1))}
               aria-disabled={safePage <= 1}
             >
               Назад
@@ -337,9 +291,8 @@ export function PatientsPage() {
 
             {pageLinks.map((p) => {
               const isActive = p === safePage;
-              const to = { pathname: "/patients", search: buildSearch(searchParams, { page: String(p) }).toString() };
               return (
-                <Link key={p} className={`${s.pageLink} ${isActive ? s.pageLinkActive : ""}`} to={to}>
+                <Link key={p} className={`${s.pageLink} ${isActive ? s.pageLinkActive : ""}`} to={buildPatientsPageLink(searchParams, p)}>
                   {p}
                 </Link>
               );
@@ -347,7 +300,7 @@ export function PatientsPage() {
 
             <Link
               className={`${s.pageLink}${safePage >= totalPages ? ` ${s.pageLinkDisabled}` : ""}`}
-              to={{ pathname: "/patients", search: buildSearch(searchParams, { page: String(Math.min(totalPages, safePage + 1)) }).toString() }}
+              to={buildPatientsPageLink(searchParams, Math.min(totalPages, safePage + 1))}
               aria-disabled={safePage >= totalPages}
             >
               Вперёд
@@ -413,16 +366,6 @@ export function PatientsPage() {
               {createMutation.isError ? <div className={ui.error}>{(createMutation.error as Error).message}</div> : null}
 
               <div className={s.modalActions}>
-                {/* <button
-                  className={`${ui.button} ${ui.buttonSecondary}`}
-                  type="button"
-                  disabled={createMutation.isPending}
-                  onClick={() => {
-                    closeAddModal();
-                  }}
-                >
-                  Отмена
-                </button> */}
                 <button
                   className={`${ui.button} ${ui.buttonBlock}`}
                   type="submit"

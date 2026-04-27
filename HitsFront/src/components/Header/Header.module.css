@@ -6,6 +6,12 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 
+:global(body.inspection-modal-open) .root {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .inner {
   max-width: 920px;
   margin: 0 auto;

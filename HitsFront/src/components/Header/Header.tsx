@@ -61,16 +61,20 @@ export function Header() {
             >
               Пациенты
             </NavLink>
-            <span className={`${s.navLink} ${s.navLinkDisabled}`}>
+            <NavLink
+              className={({ isActive }) => `${s.navLink}${isActive ? ` ${s.navLinkActive}` : ""}`}
+              to="/consultations"
+            >
               Консультации
-            </span>
-            <span className={`${s.navLink} ${s.navLinkDisabled}`}>
+            </NavLink>
+            <NavLink
+              className={({ isActive }) => `${s.navLink}${isActive ? ` ${s.navLinkActive}` : ""}`}
+              to="/reports"
+            >
               Отчеты и статистика
-            </span>
+            </NavLink>
           </nav>
-        ) : (
-          <div />
-        )}
+        ) : null}
 
         <div className={s.right}>
           {!token ? (

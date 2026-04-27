@@ -20,6 +20,11 @@ export type DoctorProfile = {
   gender: Gender;
   email: string;
   phone: string;
+  speciality?: string;
+  specialityId?: string;
+  specialityName?: string;
+  specialtyId?: string;
+  specialtyName?: string;
 };
 
 export type DoctorProfileUpdateRequest = Pick<DoctorProfile, "email" | "name" | "phone" | "gender" | "birthday">;

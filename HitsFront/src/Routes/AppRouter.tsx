@@ -5,6 +5,9 @@ import { ProfilePage } from "../Pages/ProfilePage";
 import { PatientsPage } from "../Pages/PatientsPage";
 import { PatientPage } from "../Pages/PatientPage";
 import { CreateInspectionPage } from "../Pages/CreateInspectionPage";
+import { ConsultationsPage } from "../Pages/ConsultationsPage";
+import { InspectionPage } from "../Pages/InspectionPage";
+import { ReportsPage } from "../Pages/ReportsPage";
 import { ProtectedRouter } from "./ProtectedRouter";
 
 export const AppRouter = () => {
@@ -29,6 +32,22 @@ export const AppRouter = () => {
         }
       />
       <Route
+        path="/consultations"
+        element={
+          <ProtectedRouter>
+            <ConsultationsPage />
+          </ProtectedRouter>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRouter>
+            <ReportsPage />
+          </ProtectedRouter>
+        }
+      />
+      <Route
         path="/patient/:id"
         element={
           <ProtectedRouter>
@@ -41,6 +60,14 @@ export const AppRouter = () => {
         element={
           <ProtectedRouter>
             <CreateInspectionPage />
+          </ProtectedRouter>
+        }
+      />
+      <Route
+        path="/inspection/:id"
+        element={
+          <ProtectedRouter>
+            <InspectionPage />
           </ProtectedRouter>
         }
       />

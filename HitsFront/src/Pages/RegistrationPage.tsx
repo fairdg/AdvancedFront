@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import type { Gender } from "../api/doctor";
@@ -23,16 +23,13 @@ export const RegistrationPage = () => {
     queryFn: () => getSpecialities({ page: 1, size: 200 }),
   });
 
-  const canSubmit = useMemo(() => {
-    return (
-      name.trim().length > 0 &&
-      email.trim().length > 0 &&
-      password.length > 0 &&
-      birthday.length > 0 &&
-      phone.trim().length > 0 &&
-      speciality.trim().length > 0
-    );
-  }, [birthday, email, name, password, phone, speciality]);
+  const canSubmit =
+    name.trim().length > 0 &&
+    email.trim().length > 0 &&
+    password.length > 0 &&
+    birthday.length > 0 &&
+    phone.trim().length > 0 &&
+    speciality.trim().length > 0;
 
   const mutation = useMutation({
     mutationFn: () =>

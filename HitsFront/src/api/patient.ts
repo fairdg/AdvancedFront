@@ -64,6 +64,43 @@ export type CreateInspectionConsultation = {
   comment: { content: string };
 };
 
+export type InspectionComment = {
+  id?: string;
+  createTime?: string;
+  content: string;
+  authorId?: string;
+  author?: string;
+};
+
+export type InspectionConsultation = {
+  id?: string;
+  createTime?: string;
+  specialityId?: string;
+  specialityName?: string;
+  comment?: InspectionComment | null;
+};
+
+export type InspectionDetails = Inspection & {
+  anamnesis?: string;
+  complaints?: string;
+  treatment?: string;
+  nextVisitDate?: string | null;
+  deathDate?: string | null;
+  previousInspectionId?: string | null;
+  diagnoses?: Diagnosis[];
+  consultations?: InspectionConsultation[];
+};
+
+export type UpdateInspectionRequest = {
+  anamnesis: string;
+  complaints: string;
+  treatment: string;
+  conclusion: InspectionConclusion;
+  nextVisitDate?: string;
+  deathDate?: string;
+  diagnoses: CreateInspectionDiagnosis[];
+};
+
 export type CreateInspectionRequest = {
   date: string;
   anamnesis: string;
@@ -98,6 +135,7 @@ export async function getPatients(params: PatientsQuery): Promise<PatientsRespon
   if (params.conclusion) {
     search.set("conclusion", params.conclusion);
     search.set("conclusions", params.conclusion);
+    search.append("conclusions[]", params.conclusion);
   }
   if (params.hasPlannedVisits) {
     search.set("hasPlannedVisits", "true");
@@ -156,4 +194,12 @@ export async function getPatientInspections(
 
 export async function createPatientInspection(patientId: string, body: CreateInspectionRequest): Promise<unknown> {
   return api(`/api/patient/${patientId}/inspections`, { method: "POST", json: body });
+}
+
+export async function getInspection(id: string): Promise<InspectionDetails> {
+  return api<InspectionDetails>(`/api/inspection/${id}`, { method: "GET" });
+}
+
+export async function updateInspection(id: string, body: UpdateInspectionRequest): Promise<InspectionDetails> {
+  return api<InspectionDetails>(`/api/inspection/${id}`, { method: "PUT", json: body });
 }

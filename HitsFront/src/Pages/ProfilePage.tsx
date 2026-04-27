@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/authContext";
 import { getDoctorProfile, type DoctorProfileUpdateRequest, updateDoctorProfile } from "../api/doctor";
 import ui from "../controls.module.css";
+import { toIsoFromDate } from "../shared/date";
 import page from "./ProfilePage.module.css";
 
 function toDateValue(iso: string) {
@@ -11,8 +12,23 @@ function toDateValue(iso: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function toIsoFromDate(value: string) {
-  return new Date(value).toISOString();
+function buildInitialProfileForm(
+  profile: DoctorProfileUpdateRequest | null | undefined,
+  user: { email?: string; name?: string } | null
+): DoctorProfileUpdateRequest | null {
+  if (profile) return profile;
+
+  if (user?.email || user?.name) {
+    return {
+      email: user.email ?? "",
+      name: user.name ?? "",
+      phone: "",
+      gender: "Male",
+      birthday: new Date().toISOString(),
+    };
+  }
+
+  return null;
 }
 
 export function ProfilePage() {
@@ -26,34 +42,23 @@ export function ProfilePage() {
     retry: 0,
   });
 
-  const initialForm = useMemo<DoctorProfileUpdateRequest | null>(() => {
-    const data = profileQuery.data;
-    if (data) {
-      return {
-        email: data.email,
-        name: data.name,
-        phone: data.phone,
-        gender: data.gender,
-        birthday: data.birthday,
-      };
-    }
-    if (user?.email || user?.name) {
-      return {
-        email: user.email ?? "",
-        name: user.name ?? "",
-        phone: "",
-        gender: "Male",
-        birthday: new Date().toISOString(),
-      };
-    }
-    return null;
-  }, [profileQuery.data, user?.email, user?.name]);
+  const initialForm = useMemo(
+    () => buildInitialProfileForm(profileQuery.data, user ?? null),
+    [profileQuery.data, user]
+  );
 
   const [form, setForm] = useState<DoctorProfileUpdateRequest | null>(initialForm);
 
   useEffect(() => {
     setForm(initialForm);
   }, [initialForm]);
+
+  const updateFormField = <Key extends keyof DoctorProfileUpdateRequest>(
+    field: Key,
+    value: DoctorProfileUpdateRequest[Key]
+  ) => {
+    setForm((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
 
   const updateMutation = useMutation({
     mutationFn: (body: DoctorProfileUpdateRequest) => updateDoctorProfile(body),
@@ -95,7 +100,7 @@ export function ProfilePage() {
             <input
               className={ui.input}
               value={form.name}
-              onChange={(e) => setForm((prev) => (prev ? { ...prev, name: e.target.value } : prev))}
+              onChange={(e) => updateFormField("name", e.target.value)}
               placeholder="Иван Иванов"
             />
           </label>
@@ -106,9 +111,7 @@ export function ProfilePage() {
               <select
                 className={ui.select}
                 value={form.gender}
-                onChange={(e) =>
-                  setForm((prev) => (prev ? { ...prev, gender: e.target.value as DoctorProfileUpdateRequest["gender"] } : prev))
-                }
+                onChange={(e) => updateFormField("gender", e.target.value as DoctorProfileUpdateRequest["gender"])}
               >
                 <option value="Male">Мужской</option>
                 <option value="Female">Женский</option>
@@ -121,7 +124,7 @@ export function ProfilePage() {
                 className={ui.input}
                 type="date"
                 value={form.birthday ? toDateValue(form.birthday) : ""}
-                onChange={(e) => setForm((prev) => (prev ? { ...prev, birthday: toIsoFromDate(e.target.value) } : prev))}
+                onChange={(e) => updateFormField("birthday", toIsoFromDate(e.target.value))}
               />
             </label>
           </div>
@@ -131,7 +134,7 @@ export function ProfilePage() {
             <input
               className={ui.input}
               value={form.phone}
-              onChange={(e) => setForm((prev) => (prev ? { ...prev, phone: e.target.value } : prev))}
+              onChange={(e) => updateFormField("phone", e.target.value)}
               placeholder="+7..."
             />
           </label>
@@ -141,7 +144,7 @@ export function ProfilePage() {
             <input
               className={ui.input}
               value={form.email}
-              onChange={(e) => setForm((prev) => (prev ? { ...prev, email: e.target.value } : prev))}
+              onChange={(e) => updateFormField("email", e.target.value)}
               placeholder="user@example.com"
               inputMode="email"
             />
